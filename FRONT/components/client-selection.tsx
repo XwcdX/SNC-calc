@@ -37,7 +37,7 @@ export default function ClientSelection({ onClientSelected }: ClientSelectionPro
   React.useEffect(() => {
     const fetchClients = async () => {
       try {
-        const response = await fetch("http://localhost:8000/api/clients")
+        const response = await fetch("https://kalkulatorsnc.my.id/api/clients")
         const data = await response.json()
         setClients(data)
       } catch (error) {

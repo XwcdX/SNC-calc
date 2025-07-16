@@ -65,7 +65,7 @@ interface KalkulatorRisikoProps {
 }
 
 const laravelLoader = ({ src }: { src: string }) => {
-  return `http://localhost:8000${src}`;
+  return `https://kalkulatorsnc.my.id${src}`;
 };
 
 
@@ -101,7 +101,7 @@ export default function KalkulatorRisiko({ onHasilPerhitungan }: KalkulatorRisik
     formData.append('image', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload-inspection-image', {
+      const response = await fetch('https://kalkulatorsnc.my.id/api/upload-inspection-image', {
         method: 'POST',
         body: formData,
       });
@@ -131,7 +131,7 @@ export default function KalkulatorRisiko({ onHasilPerhitungan }: KalkulatorRisik
 
   const hitungRisiko = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/calculate-risk", {
+      const response = await fetch("https://kalkulatorsnc.my.id/api/calculate-risk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

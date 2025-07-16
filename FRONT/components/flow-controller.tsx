@@ -19,8 +19,6 @@ import { motion, AnimatePresence } from "framer-motion"
 
 // Tambahkan import untuk PromoNotification
 import PromoNotification from "@/components/promo-notification"
-import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 
 interface PerhitunganDanInspeksi {
   // Property fields
@@ -170,7 +168,7 @@ export default function FlowController() {
     };
 
     try {
-      const response = await fetch('http://localhost:8000/api/risk-calculations', {
+      const response = await fetch('https://kalkulatorsnc.my.id/api/risk-calculations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

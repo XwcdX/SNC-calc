@@ -30,7 +30,7 @@ interface InspectionResultsProps {
 }
 
 const laravelLoader = ({ src }: { src: string }) => {
-  return `http://localhost:8000${src}`;
+  return `https://kalkulatorsnc.my.id${src}`;
 };
 
 export default function InspectionResults({ inspectionResults }: InspectionResultsProps) {
