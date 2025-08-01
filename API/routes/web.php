@@ -11,7 +11,7 @@ Route::fallback(function () {
         return response()->json(['message' => 'Not Found'], 404);
     }
 
-    return redirect('http://localhost:3000');
+    return redirect(env('FRONTEND_URL', 'http://localhost:3000'));
 });
 
 // Route::get('/auth/google/redirect', [SocialiteController::class, 'redirectToGoogle'])->name('login.google');
