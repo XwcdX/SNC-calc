@@ -94,7 +94,7 @@ export default function FlowController() {
     return <div>Memuat sesi...</div>;
   }
   if (status === "unauthenticated") {
-    router.push('/dashbord/login');
+    router.push('/login');
     return null;
   }
 
