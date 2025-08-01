@@ -63,8 +63,8 @@ interface InspectionResultsProps {
 }
 
 const laravelLoader = ({ src }: { src: string }) => {
-  // return `https://kalkulatorsnc.my.id${src}`;
-  return `http://localhost:8000${src}`;
+  const laravelUrl = process.env.NEXT_PUBLIC_LARAVEL_API_URL || 'http://localhost:8000';
+  return `${laravelUrl}${src}`;
 };
 
 export default function InspectionResults({ inspectionResults, fullExportData }: InspectionResultsProps) {

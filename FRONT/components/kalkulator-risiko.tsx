@@ -69,8 +69,8 @@ interface KalkulatorRisikoProps {
 }
 
 const laravelLoader = ({ src }: { src: string }) => {
-  // return `https://kalkulatorsnc.my.id${src}`;
-  return `http://localhost:8000${src}`;
+  const laravelUrl = process.env.NEXT_PUBLIC_LARAVEL_API_URL || 'http://localhost:8000';
+  return `${laravelUrl}${src}`;
 };
 
 
@@ -132,8 +132,8 @@ export default function KalkulatorRisiko({ onHasilPerhitungan, accessToken }: Ka
     formData.append('image', file);
 
     try {
-      // const response = await fetch('https://kalkulatorsnc.my.id/api/upload-inspection-image', {
-      const response = await fetch('http://localhost:8000/api/upload-inspection-image', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+      const response = await fetch(`${apiUrl}/upload-inspection-image`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -231,8 +231,8 @@ export default function KalkulatorRisiko({ onHasilPerhitungan, accessToken }: Ka
 
   const hitungRisiko = async () => {
     try {
-      // const response = await fetch("https://kalkulatorsnc.my.id/api/calculate-risk", {
-      const response = await fetch("http://localhost:8000/api/calculate-risk", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+      const response = await fetch(`${apiUrl}/calculate-risk`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

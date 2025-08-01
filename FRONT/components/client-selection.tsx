@@ -39,8 +39,8 @@ export default function ClientSelection({ onClientSelected, accessToken }: Clien
     if (!accessToken) return;
     const fetchClients = async () => {
       try {
-        // const response = await fetch("https://kalkulatorsnc.my.id/api/clients"), {
-        const response = await fetch("http://localhost:8000/api/clients", {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+        const response = await fetch(`${apiUrl}/clients`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
