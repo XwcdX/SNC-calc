@@ -28,7 +28,7 @@ interface Record {
     id: number;
     client: { name: string };
     user: { name: string };
-    kategoriRisiko: string;
+    kategori_risiko: string;
     created_at: string;
     inspection: Inspection | null;
 }
@@ -192,7 +192,7 @@ export default function AllRecords({ accessToken }: AllRecordsProps) {
                             <TableRow key={record.id} className="border-gray-800">
                                 <TableCell>{record.client.name}</TableCell>
                                 <TableCell>{record.user.name}</TableCell>
-                                <TableCell>{record.kategoriRisiko}</TableCell>
+                                <TableCell>{record.kategori_risiko}</TableCell>
                                 <TableCell>{new Date(record.created_at).toLocaleDateString('id-ID')}</TableCell>
                                 <TableCell className="flex justify-center gap-2">
                                     <Button
