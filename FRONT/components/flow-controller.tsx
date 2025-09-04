@@ -285,9 +285,9 @@ export default function FlowController() {
                     inspectionResults,
                   }}
                 />
+              // case 5:
+              //   return <LoadingAnalysis onComplete={handleLoadingComplete} />
               case 5:
-                return <LoadingAnalysis onComplete={handleLoadingComplete} />
-              case 6:
                 return hasilPerhitungan ? (
                   <PerbandinganHarga
                     biayaPerbaikan={hasilPerhitungan.biayaPerbaikan}
@@ -296,7 +296,7 @@ export default function FlowController() {
                     formatRupiah={formatRupiah}
                   />
                 ) : null
-              case 7:
+              case 6:
                 return selectedKecamatan && hasilPerhitungan ? (
                   <CombinedPromos
                     riskLevel={selectedKecamatan.riskLevel}
@@ -322,9 +322,9 @@ export default function FlowController() {
       case 2: return "Input Data Properti & Inspeksi"
       case 3: return "Pilih Lokasi Rumah di Peta"
       case 4: return "Hasil Inspeksi Rayap"
-      case 5: return "Analisis AI Sedang Berjalan"
-      case 6: return "Perbandingan Biaya"
-      case 7: return "Promo Spesial untuk Anda"
+      // case 5: return "Analisis AI Sedang Berjalan"
+      case 5: return "Perbandingan Biaya"
+      case 6: return "Promo Spesial untuk Anda"
       default: return ""
     }
   }
@@ -335,9 +335,9 @@ export default function FlowController() {
       case 2: return <Home className="h-6 w-6 text-amber-500" />
       case 3: return <MapPin className="h-6 w-6 text-amber-500" />
       case 4: return <Camera className="h-6 w-6 text-amber-500" />
-      case 5: return <Calculator className="h-6 w-6 text-amber-500" />
-      case 6: return <Banknote className="h-6 w-6 text-amber-500" />
-      case 7: return <Gift className="h-6 w-6 text-amber-500" />
+      // case 5: return <Calculator className="h-6 w-6 text-amber-500" />
+      case 5: return <Banknote className="h-6 w-6 text-amber-500" />
+      case 6: return <Gift className="h-6 w-6 text-amber-500" />
       default: return null
     }
   }

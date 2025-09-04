@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { MapPin, AlertTriangle, Info, X, Search, Compass, Layers, ZoomIn, ZoomOut, Filter, LocateFixed } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion, AnimatePresence } from "framer-motion"
 import pointInPolygon from 'point-in-polygon';
 
+// Interfaces remain the same
 interface KecamatanData {
   id: string
   name: string
@@ -23,7 +24,6 @@ interface KecamatanData {
     x: number
     y: number
   }
-  path: string
   region: "barat" | "utara" | "pusat" | "timur" | "selatan"
   geoJsonPolygon?: number[][]
 }
@@ -32,8 +32,45 @@ interface PetaRisikoSurabayaProps {
   onKecamatanSelected: (kecamatan: KecamatanData) => void
 }
 
+// Helper functions remain the same
+const getMapBounds = (kecamatanData: KecamatanData[]) => {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+
+  kecamatanData.forEach(kecamatan => {
+    kecamatan.geoJsonPolygon?.forEach(([lon, lat]) => {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    });
+  });
+
+  return { minLon, maxLon, minLat, maxLat };
+};
+
+const generateSvgPath = (
+  polygon: number[][],
+  bounds: { minLon: number; maxLon: number; minLat: number; maxLat: number },
+  svgWidth: number,
+  svgHeight: number
+): string => {
+  if (!polygon || polygon.length === 0) return "";
+
+  const { minLon, maxLon, minLat, maxLat } = bounds;
+  const lonRange = maxLon - minLon;
+  const latRange = maxLat - minLat;
+
+  const points = polygon.map(([lon, lat]) => {
+    const x = ((lon - minLon) / lonRange) * svgWidth;
+    const y = ((maxLat - lat) / latRange) * svgHeight;
+    return `${x.toFixed(4)},${y.toFixed(4)}`;
+  });
+
+  return `M ${points[0]} L ${points.slice(1).join(" ")} Z`;
+};
+
 export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSurabayaProps) {
-  // Existing states
+  // States remain the same
   const [selectedKecamatan, setSelectedKecamatan] = useState<KecamatanData | null>(null)
   const [hoveredKecamatan, setHoveredKecamatan] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -49,8 +86,6 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
   const [showWaterBodies, setShowWaterBodies] = useState(true)
   const [showLandmarks, setShowLandmarks] = useState(false)
   const [mapTheme, setMapTheme] = useState<"standard" | "satellite" | "dark">("standard")
-
-  // New states for GPS functionality
   const [gpsLockedKecamatan, setGpsLockedKecamatan] = useState<KecamatanData | null>(null)
   const [locationStatus, setLocationStatus] = useState<"loading" | "detected" | "outside_map" | "permission_denied" | "idle">(
     "loading",
@@ -60,9 +95,7 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
   const mapRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  // Data kecamatan Surabaya (remains unchanged)
   const kecamatanData: KecamatanData[] = [
-    // SURABAYA BARAT (WEST)
     {
       id: "pakal",
       name: "Pakal",
@@ -71,12 +104,22 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Pakal memiliki campuran area pemukiman baru dan lama. Beberapa area memiliki risiko tinggi terutama yang dekat dengan sungai dan area hijau.",
-      coordinates: { x: 15, y: 20 },
-      path: "M10,10 L5,35 L20,50 L30,35 L25,25 L15,15 Z",
+      coordinates: { x: 112.61793399833334, y: -7.236437418333334 },
       region: "barat",
       geoJsonPolygon: [
-        [112.63150787, -7.2605052], [112.61721039, -7.25752592], [112.61455536, -7.24820757], [112.60349274, -7.24763536], [112.60459137, -7.23331451], [112.5989151, -7.22958851], [112.59268951, -7.20230389], [112.61344147, -7.20904303], [112.62567902, -7.20331717], [112.6272583, -7.22245979], [112.63558197, -7.23548222], [112.63150787, -7.2605052]
-      ]
+        [112.63150787, -7.2605052],
+        [112.61721039, -7.25752592],
+        [112.61455536, -7.24820757],
+        [112.60349274, -7.24763536],
+        [112.60459137, -7.23331451],
+        [112.5989151, -7.22958851],
+        [112.59268951, -7.20230389],
+        [112.61344147, -7.20904303],
+        [112.62567902, -7.20331717],
+        [112.6272583, -7.22245979],
+        [112.63558197, -7.23548222],
+        [112.63150787, -7.2605052],
+      ],
     },
     {
       id: "benowo",
@@ -86,12 +129,24 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Benowo memiliki banyak area bekas rawa dan dekat dengan tambak. Kondisi tanah yang lembab dan sejarah area sebagai lahan basah membuat risiko serangan rayap sangat tinggi.",
-      coordinates: { x: 35, y: 30 },
-      path: "M25,25 L30,35 L45,40 L50,30 L45,20 L25,25 Z",
+      coordinates: { x: 112.64761616142857, y: -7.234199747142857 },
       region: "barat",
       geoJsonPolygon: [
-        [112.63279724, -7.26402998], [112.63150787, -7.2605052], [112.63558197, -7.23548222], [112.6272583, -7.22245979], [112.62567902, -7.20331717], [112.65917206, -7.19635439], [112.66149139, -7.1930027], [112.66210175, -7.20852995], [112.66837311, -7.22010994], [112.66060638, -7.23724985], [112.65441895, -7.24261999], [112.65962219, -7.26253986], [112.65223694, -7.25767994], [112.63279724, -7.26402998]
-      ]
+        [112.63279724, -7.26402998],
+        [112.63150787, -7.2605052],
+        [112.63558197, -7.23548222],
+        [112.6272583, -7.22245979],
+        [112.62567902, -7.20331717],
+        [112.65917206, -7.19635439],
+        [112.66149139, -7.1930027],
+        [112.66210175, -7.20852995],
+        [112.66837311, -7.22010994],
+        [112.66060638, -7.23724985],
+        [112.65441895, -7.24261999],
+        [112.65962219, -7.26253986],
+        [112.65223694, -7.25767994],
+        [112.63279724, -7.26402998],
+      ],
     },
     {
       id: "lakarsantri",
@@ -101,12 +156,23 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Kecamatan Lakarsantri memiliki tingkat kelembaban tinggi dan banyak area hijau yang menjadi habitat alami rayap. Bangunan di area ini sering menggunakan material kayu yang rentan terhadap serangan rayap.",
-      coordinates: { x: 20, y: 70 },
-      path: "M10,60 L15,85 L30,90 L40,75 L35,65 L25,75 L20,50 Z",
+      coordinates: { x: 112.65586942416667, y: -7.3275742425 },
       region: "barat",
       geoJsonPolygon: [
-        [112.66456604, -7.35144043], [112.65634155, -7.35682011], [112.65383148, -7.33899784], [112.64850616, -7.33530045], [112.64935303, -7.31456327], [112.62941742, -7.31164026], [112.62865448, -7.28963995], [112.64559937, -7.28887987], [112.67193604, -7.29252338], [112.67160797, -7.31753016], [112.67499542, -7.33310366], [112.66525269, -7.34040356], [112.66456604, -7.35144043]
-      ]
+        [112.66456604, -7.35144043],
+        [112.65634155, -7.35682011],
+        [112.65383148, -7.33899784],
+        [112.64850616, -7.33530045],
+        [112.64935303, -7.31456327],
+        [112.62941742, -7.31164026],
+        [112.62865448, -7.28963995],
+        [112.64559937, -7.28887987],
+        [112.67193604, -7.29252338],
+        [112.67160797, -7.31753016],
+        [112.67499542, -7.33310366],
+        [112.66525269, -7.34040356],
+        [112.66456604, -7.35144043],
+      ],
     },
     {
       id: "sambikerep",
@@ -116,12 +182,21 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Sambikerep memiliki banyak perumahan baru yang dibangun di atas lahan bekas area pertanian. Kondisi tanah yang sebelumnya digunakan untuk pertanian menciptakan lingkungan ideal bagi koloni rayap.",
-      coordinates: { x: 30, y: 45 },
-      path: "M20,50 L30,35 L45,40 L40,50 L35,65 Z",
+      coordinates: { x: 112.652876935, y: -7.272180016 },
       region: "barat",
       geoJsonPolygon: [
-        [112.68412018, -7.27687073], [112.67858887, -7.28373337], [112.67193604, -7.29252338], [112.64559937, -7.28887987], [112.62865448, -7.28963995], [112.62688446, -7.27648211], [112.63279724, -7.26402998], [112.65223694, -7.25767994], [112.65962219, -7.26253986], [112.67642975, -7.26262808], [112.68412018, -7.27687073]
-      ]
+        [112.68412018, -7.27687073],
+        [112.67858887, -7.28373337],
+        [112.67193604, -7.29252338],
+        [112.64559937, -7.28887987],
+        [112.62865448, -7.28963995],
+        [112.62688446, -7.27648211],
+        [112.63279724, -7.26402998],
+        [112.65223694, -7.25767994],
+        [112.65962219, -7.26253986],
+        [112.67642975, -7.26262808],
+        [112.68412018, -7.27687073],
+      ],
     },
     {
       id: "tandes",
@@ -131,27 +206,38 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Tandes memiliki campuran area komersial dan pemukiman. Beberapa area memiliki sejarah sebagai lahan basah yang meningkatkan risiko rayap.",
-      coordinates: { x: 45, y: 50 },
-      path: "M40,50 L45,40 L55,45 L60,55 L50,60 Z",
+      coordinates: { x: 112.67298285555555, y: -7.253010996666667 },
       region: "barat",
       geoJsonPolygon: [
-        [112.65962219, -7.26253986], [112.65441895, -7.24261999], [112.66060638, -7.23724985], [112.67688751, -7.2490201], [112.69204712, -7.25273991], [112.68447113, -7.27502775], [112.68412018, -7.27687073], [112.67642975, -7.26262808], [112.65962219, -7.26253986]
-      ]
+        [112.65962219, -7.26253986],
+        [112.65441895, -7.24261999],
+        [112.66060638, -7.23724985],
+        [112.67688751, -7.2490201],
+        [112.69204712, -7.25273991],
+        [112.68447113, -7.27502775],
+        [112.68412018, -7.27687073],
+        [112.67642975, -7.26262808],
+        [112.65962219, -7.26253986],
+      ],
     },
     {
       id: "sukomanunggal",
-      name: "Sukomanunggal",
+      name: "Suko Manunggal",
       riskLevel: "sedang",
       affectedHomes: 4,
       totalHomes: 10,
       description:
         "Sukomanunggal memiliki pemukiman padat dengan berbagai usia bangunan. Bangunan yang lebih tua memiliki risiko lebih tinggi karena sistem anti-rayap yang mungkin sudah tidak efektif.",
-      coordinates: { x: 50, y: 45 },
-      path: "M45,40 L55,45 L60,40 L55,35 L50,30 Z",
+      coordinates: { x: 112.69864807166667, y: -7.265729188333333 },
       region: "barat",
       geoJsonPolygon: [
-        [112.68447113, -7.27502775], [112.69204712, -7.25273991], [112.71434021, -7.25611019], [112.70860291, -7.27571535], [112.70220947, -7.28479767], [112.68447113, -7.27502775]
-      ]
+        [112.68447113, -7.27502775],
+        [112.69204712, -7.25273991],
+        [112.71434021, -7.25611019],
+        [112.70860291, -7.27571535],
+        [112.70220947, -7.28479767],
+        [112.68447113, -7.27502775],
+      ],
     },
     {
       id: "asemrowo",
@@ -161,12 +247,21 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Asemrowo adalah area industri dengan beberapa pemukiman. Bangunan industri sering menggunakan material yang kurang disukai rayap, namun pemukiman di sekitarnya tetap berisiko.",
-      coordinates: { x: 55, y: 35 },
-      path: "M50,30 L55,35 L60,40 L65,35 L60,25 L50,30 Z",
+      coordinates: { x: 112.69431414, y: -7.241517030909091 },
       region: "barat",
       geoJsonPolygon: [
-        [112.71711731, -7.2471199], [112.71508026, -7.25506735], [112.71434021, -7.25611019], [112.69204712, -7.25273991], [112.67688751, -7.2490201], [112.66060638, -7.23724985], [112.66837311, -7.22010994], [112.68627167, -7.22540998], [112.70623779, -7.22476006], [112.71033478, -7.24018431], [112.71711731, -7.2471199]
-      ]
+        [112.71711731, -7.2471199],
+        [112.71508026, -7.25506735],
+        [112.71434021, -7.25611019],
+        [112.69204712, -7.25273991],
+        [112.67688751, -7.2490201],
+        [112.66060638, -7.23724985],
+        [112.66837311, -7.22010994],
+        [112.68627167, -7.22540998],
+        [112.70623779, -7.22476006],
+        [112.71033478, -7.24018431],
+        [112.71711731, -7.2471199],
+      ],
     },
 
     // SURABAYA UTARA (NORTH)
@@ -178,27 +273,41 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Krembangan adalah area dekat pelabuhan dengan banyak bangunan tua. Kombinasi kelembaban tinggi dari laut dan usia bangunan menciptakan kondisi ideal bagi rayap.",
-      coordinates: { x: 65, y: 30 },
-      path: "M60,25 L65,35 L75,35 L80,25 L70,20 L60,25 Z",
+      coordinates: { x: 112.72439575, y: -7.23075501 },
       region: "utara",
       geoJsonPolygon: [
-        [112.70623779, -7.22476006], [112.72158813, -7.21027994], [112.73827362, -7.23170996], [112.74259186, -7.24403238], [112.7279129, -7.24243021], [112.71711731, -7.2471199], [112.71033478, -7.24018431], [112.70623779, -7.22476006]
-      ]
+        [112.70623779, -7.22476006],
+        [112.72158813, -7.21027994],
+        [112.73827362, -7.23170996],
+        [112.74259186, -7.24403238],
+        [112.7279129, -7.24243021],
+        [112.71711731, -7.2471199],
+        [112.71033478, -7.24018431],
+        [112.70623779, -7.22476006],
+      ],
     },
     {
-      id: "pabean-cantikan",
-      name: "Pabean Cantikan",
+      id: "pabean-cantian",
+      name: "Pabean Cantian",
       riskLevel: "tinggi",
       affectedHomes: 7,
       totalHomes: 10,
       description:
         "Pabean Cantikan adalah area pelabuhan tua dengan banyak bangunan bersejarah. Kelembaban tinggi dan bangunan kayu tua sangat rentan terhadap serangan rayap.",
-      coordinates: { x: 70, y: 25 },
-      path: "M70,20 L80,25 L85,20 L80,15 L75,15 Z",
+      coordinates: { x: 112.73489814888889, y: -7.224151121111111 },
       region: "utara",
       geoJsonPolygon: [
-        [112.74259186, -7.24403238], [112.73827362, -7.23170996], [112.72158813, -7.21027994], [112.73272705, -7.20664978], [112.73493195, -7.19610023], [112.73813629, -7.22376013], [112.74292755, -7.2342701], [112.74733734, -7.24354458], [112.7421875, -7.24774981], [112.74259186, -7.24403238]
-      ]
+        [112.74259186, -7.24403238],
+        [112.73827362, -7.23170996],
+        [112.72158813, -7.21027994],
+        [112.73272705, -7.20664978],
+        [112.73493195, -7.19610023],
+        [112.73813629, -7.22376013],
+        [112.74292755, -7.2342701],
+        [112.74733734, -7.24354458],
+        [112.7421875, -7.24774981],
+        [112.74259186, -7.24403238],
+      ],
     },
     {
       id: "semampir",
@@ -208,12 +317,17 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Semampir adalah area padat penduduk dengan banyak bangunan tua. Kelembaban tinggi dari laut dan kondisi drainase yang kurang baik meningkatkan risiko rayap.",
-      coordinates: { x: 80, y: 20 },
-      path: "M75,15 L80,15 L85,20 L90,15 L85,10 Z",
+      coordinates: { x: 112.74864434166667, y: -7.215682845 },
       region: "utara",
       geoJsonPolygon: [
-        [112.74292755, -7.2342701], [112.73813629, -7.22376013], [112.73493195, -7.19610023], [112.75698853, -7.19776917], [112.7620697, -7.20833969], [112.75762939, -7.23456812], [112.74292755, -7.2342701]
-      ]
+        [112.74292755, -7.2342701],
+        [112.73813629, -7.22376013],
+        [112.73493195, -7.19610023],
+        [112.75698853, -7.19776917],
+        [112.7620697, -7.20833969],
+        [112.75762939, -7.23456812],
+        [112.74292755, -7.2342701],
+      ],
     },
     {
       id: "kenjeran",
@@ -223,12 +337,20 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Kenjeran terletak di pesisir dengan kelembaban sangat tinggi. Banyak bangunan menggunakan kayu dan berada di atas atau dekat dengan air, menciptakan risiko rayap tertinggi di Surabaya.",
-      coordinates: { x: 90, y: 25 },
-      path: "M85,10 L90,15 L95,25 L90,35 L85,20 Z",
+      coordinates: { x: 112.76899414, y: -7.218524941 },
       region: "utara",
       geoJsonPolygon: [
-        [112.77056885, -7.23570633], [112.76370239, -7.23632002], [112.75762939, -7.23456812], [112.7620697, -7.20833969], [112.75698853, -7.19776917], [112.77475739, -7.20304728], [112.77867126, -7.21335983], [112.77865601, -7.21936321], [112.78408813, -7.22160006], [112.77056885, -7.23570633]
-      ]
+        [112.77056885, -7.23570633],
+        [112.76370239, -7.23632002],
+        [112.75762939, -7.23456812],
+        [112.7620697, -7.20833969],
+        [112.75698853, -7.19776917],
+        [112.77475739, -7.20304728],
+        [112.77867126, -7.21335983],
+        [112.77865601, -7.21936321],
+        [112.78408813, -7.22160006],
+        [112.77056885, -7.23570633],
+      ],
     },
     {
       id: "bulak",
@@ -238,12 +360,17 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Bulak adalah area pesisir dengan banyak bangunan kayu tradisional. Kelembaban tinggi dan penggunaan material kayu membuat area ini sangat rentan terhadap serangan rayap.",
-      coordinates: { x: 90, y: 35 },
-      path: "M85,20 L90,35 L85,45 L75,35 Z",
+      coordinates: { x: 112.7869300842857, y: -7.239402927142857 },
       region: "utara",
       geoJsonPolygon: [
-        [112.78926086, -7.24780512], [112.78404236, -7.23511982], [112.77056885, -7.23570633], [112.78408813, -7.22160006], [112.79416656, -7.23081017], [112.80654907, -7.25567961], [112.78926086, -7.24780512]
-      ]
+        [112.78926086, -7.24780512],
+        [112.78404236, -7.23511982],
+        [112.77056885, -7.23570633],
+        [112.78408813, -7.22160006],
+        [112.79416656, -7.23081017],
+        [112.80654907, -7.25567961],
+        [112.78926086, -7.24780512],
+      ],
     },
     {
       id: "simokerto",
@@ -253,12 +380,16 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Simokerto adalah area pemukiman padat dengan campuran bangunan tua dan baru. Sistem drainase yang kurang baik di beberapa area meningkatkan risiko rayap.",
-      coordinates: { x: 75, y: 30 },
-      path: "M75,35 L85,45 L80,50 L70,40 L75,35 Z",
+      coordinates: { x: 112.752319335, y: -7.241199583333333 },
       region: "utara",
       geoJsonPolygon: [
-        [112.75325012, -7.24911928], [112.74733734, -7.24354458], [112.74292755, -7.2342701], [112.75762939, -7.23456812], [112.76370239, -7.23632002], [112.75325012, -7.24911928]
-      ]
+        [112.75325012, -7.24911928],
+        [112.74733734, -7.24354458],
+        [112.74292755, -7.2342701],
+        [112.75762939, -7.23456812],
+        [112.76370239, -7.23632002],
+        [112.75325012, -7.24911928],
+      ],
     },
 
     // SURABAYA PUSAT (CENTRAL)
@@ -270,12 +401,17 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Bubutan adalah area pusat kota dengan banyak bangunan komersial dan pemukiman padat. Beberapa bangunan tua memiliki risiko rayap yang lebih tinggi.",
-      coordinates: { x: 65, y: 40 },
-      path: "M65,35 L75,35 L70,40 L65,50 L60,55 L60,40 L65,35 Z",
+      coordinates: { x: 112.72970133142857, y: -7.249858345714286 },
       region: "pusat",
       geoJsonPolygon: [
-        [112.71508026, -7.25506735], [112.71711731, -7.2471199], [112.7279129, -7.24243021], [112.74259186, -7.24403238], [112.7421875, -7.24774981], [112.73429871, -7.25588322], [112.71508026, -7.25506735]
-      ]
+        [112.71508026, -7.25506735],
+        [112.71711731, -7.2471199],
+        [112.7279129, -7.24243021],
+        [112.74259186, -7.24403238],
+        [112.7421875, -7.24774981],
+        [112.73429871, -7.25588322],
+        [112.71508026, -7.25506735],
+      ],
     },
     {
       id: "genteng",
@@ -285,12 +421,19 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Genteng adalah pusat bisnis dan pemerintahan dengan banyak bangunan modern. Risiko rayap lebih rendah karena konstruksi yang lebih baik, namun beberapa bangunan tua tetap berisiko.",
-      coordinates: { x: 70, y: 45 },
-      path: "M70,40 L80,50 L75,55 L65,50 L70,40 Z",
+      coordinates: { x: 112.74271392777778, y: -7.258079815555555 },
       region: "pusat",
       geoJsonPolygon: [
-        [112.73319244, -7.25839996], [112.73429871, -7.25588322], [112.7421875, -7.24774981], [112.74733734, -7.24354458], [112.75325012, -7.24911928], [112.7509613, -7.2679801], [112.74391174, -7.27426004], [112.7401123, -7.26133919], [112.73319244, -7.25839996]
-      ]
+        [112.73319244, -7.25839996],
+        [112.73429871, -7.25588322],
+        [112.7421875, -7.24774981],
+        [112.74733734, -7.24354458],
+        [112.75325012, -7.24911928],
+        [112.7509613, -7.2679801],
+        [112.74391174, -7.27426004],
+        [112.7401123, -7.26133919],
+        [112.73319244, -7.25839996],
+      ],
     },
     {
       id: "tegalsari",
@@ -300,12 +443,17 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Tegalsari adalah area pemukiman padat di pusat kota dengan banyak bangunan tua. Usia bangunan dan sistem drainase yang kurang baik meningkatkan risiko rayap.",
-      coordinates: { x: 65, y: 55 },
-      path: "M60,55 L65,50 L75,55 L70,60 Z",
+      coordinates: { x: 112.73574998428572, y: -7.274299441428572 },
       region: "pusat",
       geoJsonPolygon: [
-        [112.72768402, -7.27633047], [112.73319244, -7.25839996], [112.7401123, -7.26133919], [112.74391174, -7.27426004], [112.74411011, -7.27722979], [112.73592377, -7.28965235], [112.72768402, -7.27633047]
-      ]
+        [112.72768402, -7.27633047],
+        [112.73319244, -7.25839996],
+        [112.7401123, -7.26133919],
+        [112.74391174, -7.27426004],
+        [112.74411011, -7.27722979],
+        [112.73592377, -7.28965235],
+        [112.72768402, -7.27633047],
+      ],
     },
     {
       id: "sawahan",
@@ -315,12 +463,20 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Sawahan adalah area pemukiman padat dengan banyak bangunan tua. Usia bangunan dan kepadatan meningkatkan risiko penyebaran rayap antar bangunan.",
-      coordinates: { x: 60, y: 60 },
-      path: "M50,60 L60,55 L70,60 L65,70 L55,65 Z",
+      coordinates: { x: 112.722513197, y: -7.272183184 },
       region: "pusat",
       geoJsonPolygon: [
-        [112.70860291, -7.27571535], [112.71434021, -7.25611019], [112.71508026, -7.25506735], [112.73429871, -7.25588322], [112.73319244, -7.25839996], [112.72768402, -7.27633047], [112.7249527, -7.2922101], [112.71343994, -7.29033184], [112.71737671, -7.27953911], [112.70860291, -7.27571535]
-      ]
+        [112.70860291, -7.27571535],
+        [112.71434021, -7.25611019],
+        [112.71508026, -7.25506735],
+        [112.73429871, -7.25588322],
+        [112.73319244, -7.25839996],
+        [112.72768402, -7.27633047],
+        [112.7249527, -7.2922101],
+        [112.71343994, -7.29033184],
+        [112.71737671, -7.27953911],
+        [112.70860291, -7.27571535],
+      ],
     },
 
     // SURABAYA TIMUR (EAST)
@@ -332,12 +488,20 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Tambaksari memiliki sejarah sebagai area tambak yang dikeringkan. Kondisi tanah yang sebelumnya basah menciptakan risiko rayap yang tinggi.",
-      coordinates: { x: 80, y: 55 },
-      path: "M75,55 L80,50 L90,55 L85,65 L75,65 Z",
+      coordinates: { x: 112.769905162, y: -7.24869201 },
       region: "timur",
       geoJsonPolygon: [
-        [112.76370239, -7.23632002], [112.77056885, -7.23570633], [112.78404236, -7.23511982], [112.78926086, -7.24780512], [112.77725983, -7.25489998], [112.7763443, -7.26409721], [112.7641983, -7.26281023], [112.7509613, -7.2679801], [112.75325012, -7.24911928], [112.76370239, -7.23632002]
-      ]
+        [112.76370239, -7.23632002],
+        [112.77056885, -7.23570633],
+        [112.78404236, -7.23511982],
+        [112.78926086, -7.24780512],
+        [112.77725983, -7.25489998],
+        [112.7763443, -7.26409721],
+        [112.7641983, -7.26281023],
+        [112.7509613, -7.2679801],
+        [112.75325012, -7.24911928],
+        [112.76370239, -7.23632002],
+      ],
     },
     {
       id: "gubeng",
@@ -347,12 +511,24 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Gubeng memiliki campuran bangunan tua dan baru. Area dengan bangunan yang lebih tua memiliki risiko rayap yang lebih tinggi.",
-      coordinates: { x: 75, y: 65 },
-      path: "M70,60 L75,55 L75,65 L70,70 Z",
+      coordinates: { x: 112.75845771071428, y: -7.284852953571429 },
       region: "timur",
       geoJsonPolygon: [
-        [112.7591629, -7.30539989], [112.75679016, -7.30473995], [112.75713348, -7.29361296], [112.74751282, -7.29032993], [112.74411011, -7.27722979], [112.74391174, -7.27426004], [112.7509613, -7.2679801], [112.7641983, -7.26281023], [112.7763443, -7.26409721], [112.77198792, -7.28043985], [112.76435089, -7.27961874], [112.76303864, -7.28915739], [112.76194, -7.30615997], [112.7591629, -7.30539989]
-      ]
+        [112.7591629, -7.30539989],
+        [112.75679016, -7.30473995],
+        [112.75713348, -7.29361296],
+        [112.74751282, -7.29032993],
+        [112.74411011, -7.27722979],
+        [112.74391174, -7.27426004],
+        [112.7509613, -7.2679801],
+        [112.7641983, -7.26281023],
+        [112.7763443, -7.26409721],
+        [112.77198792, -7.28043985],
+        [112.76435089, -7.27961874],
+        [112.76303864, -7.28915739],
+        [112.76194, -7.30615997],
+        [112.7591629, -7.30539989],
+      ],
     },
     {
       id: "mulyorejo",
@@ -362,12 +538,25 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Mulyorejo memiliki banyak area kampus dan perumahan baru. Meskipun banyak bangunan baru dengan sistem anti-rayap, beberapa area masih berisiko terutama yang dekat dengan area hijau.",
-      coordinates: { x: 90, y: 60 },
-      path: "M85,45 L90,55 L95,65 L85,65 Z",
+      coordinates: { x: 112.79379654266667, y: -7.269493136 },
       region: "timur",
       geoJsonPolygon: [
-        [112.7763443, -7.26409721], [112.77725983, -7.25489998], [112.78926086, -7.24780512], [112.80654907, -7.25567961], [112.82698822, -7.26176977], [112.82793427, -7.26945114], [112.81195831, -7.28066015], [112.79936218, -7.27431774], [112.78388977, -7.27692986], [112.78516388, -7.2842207], [112.7705307, -7.2811451], [112.76303864, -7.28915739], [112.76435089, -7.27961874], [112.77198792, -7.28043985], [112.7763443, -7.26409721]
-      ]
+        [112.7763443, -7.26409721],
+        [112.77725983, -7.25489998],
+        [112.78926086, -7.24780512],
+        [112.80654907, -7.25567961],
+        [112.82698822, -7.26176977],
+        [112.82793427, -7.26945114],
+        [112.81195831, -7.28066015],
+        [112.79936218, -7.27431774],
+        [112.78388977, -7.27692986],
+        [112.78516388, -7.2842207],
+        [112.7705307, -7.2811451],
+        [112.76303864, -7.28915739],
+        [112.76435089, -7.27961874],
+        [112.77198792, -7.28043985],
+        [112.7763443, -7.26409721],
+      ],
     },
     {
       id: "sukolilo",
@@ -377,12 +566,28 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Sukolilo memiliki banyak kampus dan perumahan kelas menengah ke atas. Bangunan yang lebih baru cenderung memiliki perlindungan anti-rayap yang lebih baik.",
-      coordinates: { x: 85, y: 75 },
-      path: "M85,65 L95,65 L90,80 L80,75 Z",
+      coordinates: { x: 112.801646045, y: -7.294101186666666 },
       region: "timur",
       geoJsonPolygon: [
-        [112.77095795, -7.30861998], [112.76194, -7.30615997], [112.76303864, -7.28915739], [112.7705307, -7.2811451], [112.78516388, -7.2842207], [112.78388977, -7.27692986], [112.79936218, -7.27431774], [112.81195831, -7.28066015], [112.82793427, -7.26945114], [112.83981323, -7.27767992], [112.84690094, -7.29666996], [112.84568024, -7.3041501], [112.83888245, -7.31018019], [112.82196808, -7.30678988], [112.81118774, -7.29890013], [112.80339813, -7.30756998], [112.78035736, -7.31073999], [112.77095795, -7.30861998]
-      ]
+        [112.77095795, -7.30861998],
+        [112.76194, -7.30615997],
+        [112.76303864, -7.28915739],
+        [112.7705307, -7.2811451],
+        [112.78516388, -7.2842207],
+        [112.78388977, -7.27692986],
+        [112.79936218, -7.27431774],
+        [112.81195831, -7.28066015],
+        [112.82793427, -7.26945114],
+        [112.83981323, -7.27767992],
+        [112.84690094, -7.29666996],
+        [112.84568024, -7.3041501],
+        [112.83888245, -7.31018019],
+        [112.82196808, -7.30678988],
+        [112.81118774, -7.29890013],
+        [112.80339813, -7.30756998],
+        [112.78035736, -7.31073999],
+        [112.77095795, -7.30861998],
+      ],
     },
     {
       id: "rungkut",
@@ -392,12 +597,23 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Rungkut memiliki banyak area industri dan pemukiman. Beberapa area adalah bekas rawa yang dikeringkan, menciptakan kondisi tanah yang disukai rayap.",
-      coordinates: { x: 90, y: 85 },
-      path: "M80,75 L90,80 L95,90 L85,95 L75,85 Z",
+      coordinates: { x: 112.80512613615385, y: -7.317586226923077 },
       region: "timur",
       geoJsonPolygon: [
-        [112.75749969, -7.33031988], [112.77095795, -7.30861998], [112.78035736, -7.31073999], [112.80339813, -7.30756998], [112.81118774, -7.29890013], [112.82196808, -7.30678988], [112.83888245, -7.31018019], [112.84568024, -7.3041501], [112.8425293, -7.31696987], [112.827034, -7.33286524], [112.82228088, -7.33033991], [112.79476166, -7.33337021], [112.75749969, -7.33031988]
-      ]
+        [112.75749969, -7.33031988],
+        [112.77095795, -7.30861998],
+        [112.78035736, -7.31073999],
+        [112.80339813, -7.30756998],
+        [112.81118774, -7.29890013],
+        [112.82196808, -7.30678988],
+        [112.83888245, -7.31018019],
+        [112.84568024, -7.3041501],
+        [112.8425293, -7.31696987],
+        [112.827034, -7.33286524],
+        [112.82228088, -7.33033991],
+        [112.79476166, -7.33337021],
+        [112.75749969, -7.33031988],
+      ],
     },
     {
       id: "gunung-anyar",
@@ -407,12 +623,19 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Gunung Anyar memiliki banyak perumahan baru dan dekat dengan area mangrove. Kelembaban dari area mangrove meningkatkan risiko rayap di beberapa lokasi.",
-      coordinates: { x: 85, y: 95 },
-      path: "M75,85 L85,95 L90,100 L70,95 Z",
+      coordinates: { x: 112.80628315888889, y: -7.336968846666667 },
       region: "timur",
       geoJsonPolygon: [
-        [112.827034, -7.33286524], [112.82589722, -7.34321976], [112.81293488, -7.34628057], [112.78956604, -7.34409332], [112.75508881, -7.33682013], [112.75749969, -7.33031988], [112.79476166, -7.33337021], [112.82228088, -7.33033991], [112.827034, -7.33286524]
-      ]
+        [112.827034, -7.33286524],
+        [112.82589722, -7.34321976],
+        [112.81293488, -7.34628057],
+        [112.78956604, -7.34409332],
+        [112.75508881, -7.33682013],
+        [112.75749969, -7.33031988],
+        [112.79476166, -7.33337021],
+        [112.82228088, -7.33033991],
+        [112.827034, -7.33286524],
+      ],
     },
     {
       id: "tenggilis-mejoyo",
@@ -422,12 +645,18 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Tenggilis Mejoyo memiliki banyak perumahan dan area komersial. Bangunan yang lebih baru memiliki risiko lebih rendah, tetapi area yang dekat dengan sungai tetap berisiko.",
-      coordinates: { x: 75, y: 80 },
-      path: "M70,70 L75,65 L80,75 L75,85 L65,80 Z",
+      coordinates: { x: 112.75471440125, y: -7.32352822875 },
       region: "timur",
       geoJsonPolygon: [
-        [112.74302673, -7.34081507], [112.74398804, -7.32260275], [112.7591629, -7.30539989], [112.76194, -7.30615997], [112.77095795, -7.30861998], [112.75749969, -7.33031988], [112.75508881, -7.33682013], [112.74302673, -7.34081507]
-      ]
+        [112.74302673, -7.34081507],
+        [112.74398804, -7.32260275],
+        [112.7591629, -7.30539989],
+        [112.76194, -7.30615997],
+        [112.77095795, -7.30861998],
+        [112.75749969, -7.33031988],
+        [112.75508881, -7.33682013],
+        [112.74302673, -7.34081507],
+      ],
     },
 
     // SURABAYA SELATAN (SOUTH)
@@ -439,12 +668,22 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Wonokromo dilalui sungai besar dan memiliki banyak bangunan tua. Kombinasi kelembaban dari sungai dan usia bangunan meningkatkan risiko rayap.",
-      coordinates: { x: 70, y: 75 },
-      path: "M65,70 L70,70 L75,65 L70,60 L65,70 Z",
+      coordinates: { x: 112.73977322916667, y: -7.294156683333333 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.75679016, -7.30473995], [112.741745, -7.30587244], [112.73522186, -7.31116724], [112.7232666, -7.30768394], [112.72080231, -7.30800009], [112.7249527, -7.2922101], [112.72768402, -7.27633047], [112.73592377, -7.28965235], [112.74411011, -7.27722979], [112.74751282, -7.29032993], [112.75713348, -7.29361296], [112.75679016, -7.30473995]
-      ]
+        [112.75679016, -7.30473995],
+        [112.741745, -7.30587244],
+        [112.73522186, -7.31116724],
+        [112.7232666, -7.30768394],
+        [112.72080231, -7.30800009],
+        [112.7249527, -7.2922101],
+        [112.72768402, -7.27633047],
+        [112.73592377, -7.28965235],
+        [112.74411011, -7.27722979],
+        [112.74751282, -7.29032993],
+        [112.75713348, -7.29361296],
+        [112.75679016, -7.30473995],
+      ],
     },
     {
       id: "wonocolo",
@@ -454,12 +693,19 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Wonocolo memiliki banyak area kampus dan pemukiman. Bangunan yang lebih baru dan perawatan yang baik mengurangi risiko rayap.",
-      coordinates: { x: 65, y: 75 },
-      path: "M60,75 L65,70 L65,80 L60,85 L55,80 L60,75 Z",
+      coordinates: { x: 112.74235282444445, y: -7.324222015555555 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.74302673, -7.34081507], [112.73775482, -7.34494734], [112.72931671, -7.33950377], [112.73522186, -7.31116724], [112.741745, -7.30587244], [112.75679016, -7.30473995], [112.7591629, -7.30539989], [112.74398804, -7.32260275], [112.74302673, -7.34081507]
-      ]
+        [112.74302673, -7.34081507],
+        [112.73775482, -7.34494734],
+        [112.72931671, -7.33950377],
+        [112.73522186, -7.31116724],
+        [112.741745, -7.30587244],
+        [112.75679016, -7.30473995],
+        [112.7591629, -7.30539989],
+        [112.74398804, -7.32260275],
+        [112.74302673, -7.34081507],
+      ],
     },
     {
       id: "gayungan",
@@ -469,12 +715,20 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Gayungan memiliki banyak perumahan kelas menengah ke atas dengan konstruksi yang lebih baik. Sistem drainase yang baik mengurangi kelembaban dan risiko rayap.",
-      coordinates: { x: 60, y: 85 },
-      path: "M55,80 L60,85 L55,90 L50,85 Z",
+      coordinates: { x: 112.725907957, y: -7.332389148 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.71568298, -7.34181118], [112.7161026, -7.33993292], [112.71800995, -7.32854986], [112.72647858, -7.31787014], [112.7232666, -7.30768394], [112.73522186, -7.31116724], [112.72931671, -7.33950377], [112.73775482, -7.34494734], [112.7256012, -7.34820986], [112.71568298, -7.34181118]
-      ]
+        [112.71568298, -7.34181118],
+        [112.7161026, -7.33993292],
+        [112.71800995, -7.32854986],
+        [112.72647858, -7.31787014],
+        [112.7232666, -7.30768394],
+        [112.73522186, -7.31116724],
+        [112.72931671, -7.33950377],
+        [112.73775482, -7.34494734],
+        [112.7256012, -7.34820986],
+        [112.71568298, -7.34181118],
+      ],
     },
     {
       id: "jambangan",
@@ -484,27 +738,43 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Jambangan memiliki banyak area hijau dan dekat dengan sungai. Kelembaban dari area hijau dan sungai meningkatkan risiko rayap.",
-      coordinates: { x: 55, y: 80 },
-      path: "M50,75 L55,80 L50,85 L45,80 L50,75 Z",
+      coordinates: { x: 112.714398926, y: -7.325994503 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.70471954, -7.3361001], [112.71030426, -7.32910633], [112.71134949, -7.31274986], [112.71388245, -7.30773163], [112.72080231, -7.30800009], [112.7232666, -7.30768394], [112.72647858, -7.31787014], [112.71800995, -7.32854986], [112.7161026, -7.33993292], [112.70471954, -7.3361001]
-      ]
+        [112.70471954, -7.3361001],
+        [112.71030426, -7.32910633],
+        [112.71134949, -7.31274986],
+        [112.71388245, -7.30773163],
+        [112.72080231, -7.30800009],
+        [112.7232666, -7.30768394],
+        [112.72647858, -7.31787014],
+        [112.71800995, -7.32854986],
+        [112.7161026, -7.33993292],
+        [112.70471954, -7.3361001],
+      ],
     },
     {
       id: "karangpilang",
-      name: "Karangpilang",
+      name: "Karang Pilang",
       riskLevel: "sedang",
       affectedHomes: 4,
       totalHomes: 10,
       description:
         "Karangpilang memiliki campuran area industri dan pemukiman. Beberapa area dekat sungai memiliki risiko rayap yang lebih tinggi.",
-      coordinates: { x: 45, y: 85 },
-      path: "M40,75 L45,80 L50,85 L45,90 L35,85 Z",
+      coordinates: { x: 112.686566162, y: -7.334771966000001 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.66456604, -7.35144043], [112.66525269, -7.34040356], [112.67499542, -7.33310366], [112.69532013, -7.32636833], [112.70165253, -7.31530428], [112.71134949, -7.31274986], [112.71030426, -7.32910633], [112.70471954, -7.3361001], [112.67835999, -7.35043097], [112.66456604, -7.35144043]
-      ]
+        [112.66456604, -7.35144043],
+        [112.66525269, -7.34040356],
+        [112.67499542, -7.33310366],
+        [112.69532013, -7.32636833],
+        [112.70165253, -7.31530428],
+        [112.71134949, -7.31274986],
+        [112.71030426, -7.32910633],
+        [112.70471954, -7.3361001],
+        [112.67835999, -7.35043097],
+        [112.66456604, -7.35144043],
+      ],
     },
     {
       id: "dukuh-pakis",
@@ -514,12 +784,22 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Dukuh Pakis memiliki banyak perumahan kelas menengah. Beberapa area memiliki sejarah sebagai lahan basah yang meningkatkan risiko rayap.",
-      coordinates: { x: 50, y: 70 },
-      path: "M45,70 L50,75 L55,65 L50,60 L45,70 Z",
+      coordinates: { x: 112.6997097725, y: -7.289196383333333 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.71388245, -7.30773163], [112.67573547, -7.29424953], [112.67858887, -7.28373337], [112.68412018, -7.27687073], [112.68447113, -7.27502775], [112.70220947, -7.28479767], [112.70860291, -7.27571535], [112.71737671, -7.27953911], [112.71343994, -7.29033184], [112.7249527, -7.2922101], [112.72080231, -7.30800009], [112.71388245, -7.30773163]
-      ]
+        [112.71388245, -7.30773163],
+        [112.67573547, -7.29424953],
+        [112.67858887, -7.28373337],
+        [112.68412018, -7.27687073],
+        [112.68447113, -7.27502775],
+        [112.70220947, -7.28479767],
+        [112.70860291, -7.27571535],
+        [112.71737671, -7.27953911],
+        [112.71343994, -7.29033184],
+        [112.7249527, -7.2922101],
+        [112.72080231, -7.30800009],
+        [112.71388245, -7.30773163],
+      ],
     },
     {
       id: "wiyung",
@@ -529,87 +809,87 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
       totalHomes: 10,
       description:
         "Wiyung memiliki banyak area hijau dan perumahan baru yang dibangun di atas lahan pertanian. Kondisi tanah yang sebelumnya digunakan untuk pertanian menciptakan risiko rayap yang tinggi.",
-      coordinates: { x: 40, y: 75 },
-      path: "M35,65 L40,75 L45,70 L40,60 Z",
+      coordinates: { x: 112.689613342, y: -7.311756535000001 },
       region: "selatan",
       geoJsonPolygon: [
-        [112.67499542, -7.33310366], [112.67160797, -7.31753016], [112.67193604, -7.29252338], [112.67858887, -7.28373337], [112.67573547, -7.29424953], [112.71388245, -7.30773163], [112.71134949, -7.31274986], [112.70165253, -7.31530428], [112.69532013, -7.32636833], [112.67499542, -7.33310366]
-      ]
+        [112.67499542, -7.33310366],
+        [112.67160797, -7.31753016],
+        [112.67193604, -7.29252338],
+        [112.67858887, -7.28373337],
+        [112.67573547, -7.29424953],
+        [112.71388245, -7.30773163],
+        [112.71134949, -7.31274986],
+        [112.70165253, -7.31530428],
+        [112.69532013, -7.32636833],
+        [112.67499542, -7.33310366],
+      ],
     },
-  ]
+  ];
 
-  // --- START OF NEW GPS LOGIC ---
+  const SVG_WIDTH = 100;
+  const SVG_HEIGHT = 100;
+  const mapBounds = useMemo(() => getMapBounds(kecamatanData), [kecamatanData]);
+
+  // FIX 1: Handle the possibility of `geoJsonPolygon` being undefined.
+  const kecamatanPaths = useMemo(() => {
+    return kecamatanData.map(kecamatan => ({
+      ...kecamatan,
+      renderPath: kecamatan.geoJsonPolygon
+        ? generateSvgPath(kecamatan.geoJsonPolygon, mapBounds, SVG_WIDTH, SVG_HEIGHT)
+        : "" // Return an empty path if polygon is undefined
+    }));
+  }, [kecamatanData, mapBounds]);
+
+  const projectedKecamatanData = useMemo(() => {
+    const { minLon, maxLon, minLat, maxLat } = mapBounds;
+    const lonRange = maxLon - minLon;
+    const latRange = maxLat - minLat;
+
+    return kecamatanPaths.map(kecamatan => {
+      const x = ((kecamatan.coordinates.x - minLon) / lonRange) * SVG_WIDTH;
+      const y = ((maxLat - kecamatan.coordinates.y) / latRange) * SVG_HEIGHT;
+      return { ...kecamatan, projectedCoordinates: { x, y } };
+    });
+  }, [kecamatanPaths, mapBounds]);
+
+  // GPS logic is fine
   const findKecamatanByCoords = (lat: number, lon: number): KecamatanData | null => {
-    console.log(`Checking real coordinates: Lat ${lat}, Lon ${lon}`);
-    const userLocation = [lon, lat]; // GeoJSON format is [longitude, latitude]
-
-    // Loop through all your kecamatans
+    const userLocation = [lon, lat];
     for (const kecamatan of kecamatanData) {
-      // Check if the kecamatan has polygon data and if the user's location is inside it
       if (kecamatan.geoJsonPolygon && pointInPolygon(userLocation, kecamatan.geoJsonPolygon)) {
-        // If it's a match, return that kecamatan object
         return kecamatan;
       }
     }
-
-    // If the loop finishes without finding a match, the user is outside all defined areas.
     return null;
   };
 
   useEffect(() => {
-    // This part of the code remains exactly the same.
-    // It will now correctly use your new, non-random findKecamatanByCoords function.
     if (navigator.geolocation) {
-      console.log("Requesting user location...");
       setLocationStatus("loading");
-
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          console.log(`Location acquired: Lat: ${latitude}, Lon: ${longitude}`);
-
           const detectedKecamatan = findKecamatanByCoords(latitude, longitude);
 
           if (detectedKecamatan) {
-            console.log("Lokasi terdeteksi di dalam peta:", detectedKecamatan.name);
             setGpsLockedKecamatan(detectedKecamatan);
             setSelectedKecamatan(detectedKecamatan);
             setLocationStatus("detected");
           } else {
-            console.log("Lokasi GPS berada di luar area peta Surabaya.");
             setLocationStatus("outside_map");
           }
         },
         (error) => {
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              console.log("Izin lokasi ditolak oleh pengguna.");
-              break;
-            case error.POSITION_UNAVAILABLE:
-              console.log("Informasi lokasi tidak tersedia.");
-              break;
-            case error.TIMEOUT:
-              console.log("Permintaan lokasi timeout.");
-              break;
-            default:
-              console.log("Terjadi kesalahan saat mengambil lokasi.");
-              break;
-          }
+          console.error("Geolocation error:", error);
           setLocationStatus("permission_denied");
         },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      console.log("Geolocation tidak didukung oleh browser ini.");
       setLocationStatus("permission_denied");
     }
   }, []);
 
-  // --- END OF NEW GPS LOGIC ---
 
   const majorRoads = [
     "M10,50 L90,50",
@@ -634,7 +914,6 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
     { x: 70, y: 85, name: "Bandara Juanda", icon: "✈️" },
     { x: 25, y: 30, name: "Hutan Mangrove", icon: "🌳" },
   ]
-
   const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.2, 3))
   const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.2, 0.5))
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -693,12 +972,10 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
         : "fill-green-700/70 hover:fill-green-600"
   }
 
-  // MODIFIED: Clicking a kecamatan now only changes the *view*, not the locked location.
   const handleKecamatanClick = (kecamatan: KecamatanData) => {
     setSelectedKecamatan(kecamatan)
   }
 
-  // MODIFIED: The confirmation button uses the GPS-locked location if available.
   const handleConfirmSelection = () => {
     const finalSelection = gpsLockedKecamatan || selectedKecamatan
     if (finalSelection) {
@@ -706,7 +983,7 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
     }
   }
 
-  const filteredKecamatan = kecamatanData.filter((kecamatan) => {
+  const filteredKecamatan = projectedKecamatanData.filter((kecamatan) => {
     const matchesSearch = kecamatan.name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRegion = filterRegion === "all" || kecamatan.region === filterRegion
     const matchesRisk = filterRisk === "all" || kecamatan.riskLevel === filterRisk
@@ -740,8 +1017,10 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
     rendah: kecamatanData.filter((k) => k.riskLevel === "rendah").length,
   }
 
+
   return (
     <Card className="p-6 bg-black/90 border-l-4 border-yellow-500 text-white shadow-lg relative">
+      {/* ...The top section is fine... */}
       <div className="flex items-center gap-2 mb-6">
         <MapPin className="h-6 w-6 text-amber-500" />
         <h2 className="text-xl md:text-2xl font-bold headline">PILIH LOKASI RUMAH ANDA DI PETA</h2>
@@ -765,7 +1044,7 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                       key={kecamatan.id}
                       className="p-2 hover:bg-amber-900/30 cursor-pointer flex items-center gap-2"
                       onClick={() => {
-                        handleKecamatanClick(kecamatan) // Use the modified click handler
+                        handleKecamatanClick(kecamatan)
                         setSearchQuery("")
                       }}
                     >
@@ -855,7 +1134,6 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                   transition: isDragging ? "none" : "transform 0.2s ease-out",
                 }}
               >
-                {/* Map layers (background, water, roads etc.) remain unchanged */}
                 <rect x="0" y="0" width="100" height="100" className={getMapBackground()} />
                 {mapTheme !== "satellite" && (
                   <g className="opacity-20">
@@ -921,19 +1199,21 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                   </g>
                 )}
                 <g>
-                  {kecamatanData.map((kecamatan) => {
+                  {projectedKecamatanData.map((kecamatan) => {
                     const isFiltered =
                       (filterRegion !== "all" && kecamatan.region !== filterRegion) ||
-                      (filterRisk !== "all" && kecamatan.riskLevel !== filterRisk)
+                      (filterRisk !== "all" && kecamatan.riskLevel !== filterRisk);
+                    const isFoundInSearch = filteredKecamatan.some(k => k.id === kecamatan.id);
+
                     return (
                       <path
                         key={kecamatan.id}
-                        d={kecamatan.path}
+                        d={kecamatan.renderPath}
                         className={cn(
                           "cursor-pointer transition-all duration-300",
                           isFiltered ? "opacity-30" : "opacity-100",
                           searchQuery
-                            ? filteredKecamatan.includes(kecamatan)
+                            ? isFoundInSearch
                               ? getRiskColor(kecamatan.riskLevel, true, selectedKecamatan?.id === kecamatan.id)
                               : getRiskColor(kecamatan.riskLevel, false, false) + " opacity-30"
                             : getRiskColor(
@@ -950,11 +1230,12 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                   })}
                 </g>
                 <g>
-                  {kecamatanData.map((kecamatan) => (
+                  {projectedKecamatanData.map((kecamatan) => (
                     <path
                       key={`border-${kecamatan.id}`}
-                      d={kecamatan.path}
-                      className="fill-none stroke-white/30 stroke-[0.2]"
+                      d={kecamatan.renderPath}
+                      className="fill-none stroke-white/30"
+                      style={{ strokeWidth: 0.2 / zoomLevel }}
                     />
                   ))}
                 </g>
@@ -992,22 +1273,25 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                 )}
                 {showLabels && (
                   <g>
-                    {kecamatanData.map((kecamatan) => {
+                    {projectedKecamatanData.map((kecamatan) => {
                       const isFiltered =
                         (filterRegion !== "all" && kecamatan.region !== filterRegion) ||
                         (filterRisk !== "all" && kecamatan.riskLevel !== filterRisk)
                       return (
                         <g key={`label-${kecamatan.id}`} className={isFiltered ? "opacity-30" : "opacity-100"}>
                           <text
-                            x={kecamatan.coordinates.x}
-                            y={kecamatan.coordinates.y}
+                            // FIX 3: Use the projected coordinates for labels
+                            x={kecamatan.projectedCoordinates.x}
+                            y={kecamatan.projectedCoordinates.y}
                             textAnchor="middle"
+                            dominantBaseline="middle"
                             className={cn(
-                              "fill-white text-[2px] font-bold pointer-events-none",
+                              "fill-white font-bold pointer-events-none transition-opacity",
                               hoveredKecamatan === kecamatan.id || selectedKecamatan?.id === kecamatan.id
                                 ? "opacity-100"
                                 : "opacity-70",
                             )}
+                            style={{ fontSize: 2.5 / zoomLevel }}
                           >
                             {kecamatan.name}
                           </text>
@@ -1017,12 +1301,12 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                   </g>
                 )}
 
-                {/* NEW: Visual indicator for GPS locked location */}
-                {isGpsLocked && (
+                {/* ...Rest of the SVG is fine */}
+                {isGpsLocked && selectedKecamatan && ( // Check for selectedKecamatan to get coordinates
                   <g>
                     <circle
-                      cx={gpsLockedKecamatan.coordinates.x}
-                      cy={gpsLockedKecamatan.coordinates.y}
+                      cx={projectedKecamatanData.find(k => k.id === selectedKecamatan.id)?.projectedCoordinates.x}
+                      cy={projectedKecamatanData.find(k => k.id === selectedKecamatan.id)?.projectedCoordinates.y}
                       r="2.5"
                       className="fill-blue-500/30 stroke-white stroke-[0.3]"
                     >
@@ -1044,15 +1328,13 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                       />
                     </circle>
                     <circle
-                      cx={gpsLockedKecamatan.coordinates.x}
-                      cy={gpsLockedKecamatan.coordinates.y}
+                      cx={projectedKecamatanData.find(k => k.id === selectedKecamatan.id)?.projectedCoordinates.x}
+                      cy={projectedKecamatanData.find(k => k.id === selectedKecamatan.id)?.projectedCoordinates.y}
                       r="1.5"
                       className="fill-blue-400 stroke-white stroke-[0.4]"
                     />
                   </g>
                 )}
-
-                {/* Map decorations (compass, scale, legend) remain unchanged */}
                 <g transform="translate(85, 15)">
                   <circle cx="0" cy="0" r="5" className="fill-black/40 stroke-amber-500/70 stroke-[0.3]" />
                   <path d="M0,-4 L1,-1 L0,0 L-1,-1 Z" className="fill-red-500" />
@@ -1103,6 +1385,7 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
                 </g>
               </svg>
 
+              {/* ... The rest of the component is fine ... */}
               <div className="absolute top-2 right-2 flex flex-col gap-1">
                 <Button
                   variant="outline"
@@ -1262,7 +1545,6 @@ export default function PetaRisikoSurabaya({ onKecamatanSelected }: PetaRisikoSu
         </div>
 
         <div className="lg:w-1/3">
-          {/* MODIFIED: The entire right panel is now driven by the new logic */}
           {selectedKecamatan ? (
             <div className="bg-black/50 rounded-lg p-4 border border-amber-800/30 h-full relative">
               {!isGpsLocked && (
