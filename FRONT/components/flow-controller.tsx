@@ -206,14 +206,14 @@ export default function FlowController() {
   }
 
   const goToNextStep = () => {
-    if (currentStep < 7 && !isAnimating) {
+    if (currentStep < 6 && !isAnimating) {
       setIsAnimating(true)
       setDirection(1)
       setTimeout(() => {
         const nextStep = currentStep + 1
         setCurrentStep(nextStep)
         setIsAnimating(false)
-        if (nextStep === 7 && selectedKecamatan) {
+        if (nextStep === 6 && selectedKecamatan) {
           setTimeout(() => setShowPromoNotification(true), 1000)
         }
       }, 700)
@@ -380,15 +380,15 @@ export default function FlowController() {
               }}
               className="text-xl font-bold headline text-white"
             >
-              Langkah {currentStep} dari 7: {getStepTitle()}
+              Langkah {currentStep} dari 6: {getStepTitle()}
             </motion.h2>
           </div>
         </div>
         <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
           <motion.div
             className="bg-amber-500 h-full"
-            initial={{ width: `${((currentStep - 1) / 7) * 100}%` }}
-            animate={{ width: `${(currentStep / 7) * 100}%` }}
+            initial={{ width: `${((currentStep - 1) / 6) * 100}%` }}
+            animate={{ width: `${(currentStep / 6) * 100}%` }}
             transition={{
               type: "spring",
               stiffness: 100,
@@ -401,7 +401,7 @@ export default function FlowController() {
         </div>
 
         <div className="flex justify-between mt-2">
-          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
+          {[1, 2, 3, 4, 5, 6].map((step) => (
             <motion.div
               key={step}
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${step === currentStep
@@ -461,16 +461,15 @@ export default function FlowController() {
             transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
             <Button
-              onClick={currentStep < 7 ? goToNextStep : restartProcess}
+              onClick={currentStep < 6 ? goToNextStep : restartProcess}
               disabled={
                 (currentStep === 2 && !hasilPerhitungan) ||
                 (currentStep === 3 && !selectedKecamatan) ||
-                currentStep === 5 ||
                 isAnimating
               }
               className="bg-amber-500 hover:bg-amber-600 text-black"
             >
-              {currentStep < 7 ? (
+              {currentStep < 6 ? (
                 <>
                   Lanjut
                   <ArrowRight className="ml-2 h-4 w-4" />

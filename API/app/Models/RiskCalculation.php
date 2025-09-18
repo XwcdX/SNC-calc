@@ -54,7 +54,7 @@ class RiskCalculation extends Model
         return [
             'luasTanah' => 'required|numeric',
             'umurBangunan' => 'required|integer',
-            'lokasi_rumah' => 'required|string',
+            'lokasiRumah' => 'required|string',
             'materialBangunan' => 'required|string',
             'riwayatRayap' => 'required|string',
             'tingkatKelembaban' => 'required|numeric',
