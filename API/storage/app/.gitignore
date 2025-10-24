@@ -2,6 +2,7 @@
 !private/
 !public/
 !templates/
+!contracts/
 !*.docx
 !*.xlsx
 !.gitignore

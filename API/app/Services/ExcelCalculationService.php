@@ -115,7 +115,7 @@ class ExcelCalculationService
 
         $this->fillGeneralInfo($sheet, $data);
         $this->fillTransportationAndSdm($sheet, $data);
-        $this->fillMaterialQuantities($sheet, $data['preparationSet'] ?? [], $data['additionalSet'] ?? []);
+        $this->fillMaterialQuantities($sheet, $data);
         $this->fillTimenWorkerEstimation($sheet, $data);
 
         return $spreadsheet;

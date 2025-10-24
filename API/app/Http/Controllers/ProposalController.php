@@ -10,6 +10,7 @@ use Intervention\Image\ImageManager;
 use Intervention\Image\Laravel\Facades\Image;
 use PhpOffice\PhpWord\TemplateProcessor;
 use App\Services\ExcelCalculationService;
+use ZipArchive;
 
 class ProposalController extends Controller
 {
@@ -42,18 +43,25 @@ class ProposalController extends Controller
 
         $validated = $validator->validated();
         $serviceType = $validated['service_type'];
-        $proposalType = $request->get('proposal_type', 'pest_control');
 
-        $templatePath = storage_path("app/templates/{$serviceType}.docx");
-        if (!file_exists($templatePath)) {
-            Log::error("Template not found for service type: {$serviceType}");
-            return response()->json(['error' => 'Template not found'], 404);
+        // --- TEMPLATE PATHS FOR BOTH DOCUMENTS ---
+        $proposalTemplatePath = storage_path("app/templates/{$serviceType}.docx");
+        $contractTemplatePath = storage_path("app/contracts/{$serviceType}.docx");
+
+        if (!file_exists($proposalTemplatePath)) {
+            Log::error("Proposal template not found for service type: {$serviceType}");
+            return response()->json(['error' => 'Proposal template not found'], 404);
         }
-        $template = new TemplateProcessor($templatePath);
+        if (!file_exists($contractTemplatePath)) {
+            Log::error("Contract template not found for service type: {$serviceType}");
+            return response()->json(['error' => 'Contract template not found'], 404);
+        }
 
-        $this->fillGeneralAttributes($template, $validated, $serviceType);
-        $this->processImages($template, $validated['images'] ?? []);
+        // --- INSTANTIATE TEMPLATE PROCESSORS ---
+        $proposalTemplate = new TemplateProcessor($proposalTemplatePath);
+        $contractTemplate = new TemplateProcessor($contractTemplatePath);
 
+        // --- CALCULATE PRICE (ONCE) ---
         $serviceDataForCalculation = [
             'luasTanah' => $validated['area_treatment'],
             'jarakTempuh' => $validated['distance_km'],
@@ -68,30 +76,79 @@ class ProposalController extends Controller
         ];
 
         try {
-            $comparisonResults = $this->calculationService->getComparativePrices($serviceDataForCalculation);
-
-            if (!empty($comparisonResults)) {
-                Log::info('Filling template with comparative prices.', $comparisonResults);
-                $this->fillComparativeAttributes($template, $comparisonResults, $serviceType, $validated['area_treatment']);
+            $comparativeServiceTypes = [
+                'inject_spraying',
+                'pipanasi',
+                'refill_pipanasi',
+                'spraying'
+            ];
+            $comparisonResults = [];
+            if (in_array($validated['service_type'], $comparativeServiceTypes)) {
+                Log::info("Service type '{$validated['service_type']}' supports comparison. Calculating comparative prices.");
+                $comparisonResults = $this->calculationService->getComparativePrices($serviceDataForCalculation);
             } else {
-                Log::info('No comparison needed. Calculating single price.');
-                $basePrice = $this->calculationService->getCalculatedPrice($serviceDataForCalculation);
-                $this->fillSinglePriceAttributes($template, $basePrice, $validated);
+                Log::info("Service type '{$validated['service_type']}' does not support comparison. Proceeding with single price calculation.");
+            }
+
+            // --- FILL BOTH TEMPLATES ---
+            $templates = [$proposalTemplate, $contractTemplate];
+            foreach ($templates as $template) {
+                $this->fillGeneralAttributes($template, $validated, $serviceType);
+                $this->processImages($template, $validated['images'] ?? []);
+
+                if (!empty($comparisonResults)) {
+                    Log::info('Filling template with comparative prices.', $comparisonResults);
+                    $this->fillComparativeAttributes($template, $comparisonResults, $serviceType, $validated['area_treatment']);
+                } else {
+                    Log::info('No comparison needed. Calculating single price.');
+                    $basePrice = $this->calculationService->getCalculatedPrice($serviceDataForCalculation);
+                    $this->fillSinglePriceAttributes($template, $basePrice, $validated);
+                }
+                $this->clearUnusedPlaceholders($template);
             }
         } catch (\Exception $e) {
             Log::error('Proposal generation failed during price calculation: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to calculate price and generate proposal.'], 500);
         }
 
-        $outputFilename = $this->generateOutputFilename($proposalType, $serviceType, $validated['client_name']);
-        $outputPath = storage_path("app/generated/{$outputFilename}");
-        if (!file_exists(dirname($outputPath))) {
-            mkdir(dirname($outputPath), 0755, true);
-        }
-        $this->clearUnusedPlaceholders($template);
-        $template->saveAs($outputPath);
+        // --- SAVE BOTH GENERATED FILES ---
+        $proposalOutputFilename = $this->generateOutputFilename('proposal', $serviceType, $validated['client_name']);
+        $proposalOutputPath = storage_path("app/generated/{$proposalOutputFilename}");
 
-        return response()->download($outputPath)->deleteFileAfterSend(true);
+        $contractOutputFilename = $this->generateOutputFilename('contract', $serviceType, $validated['client_name']);
+        $contractOutputPath = storage_path("app/generated/{$contractOutputFilename}");
+
+        if (!file_exists(dirname($proposalOutputPath))) {
+            mkdir(dirname($proposalOutputPath), 0755, true);
+        }
+        $proposalTemplate->saveAs($proposalOutputPath);
+        $contractTemplate->saveAs($contractOutputPath);
+
+        // --- CREATE ZIP ARCHIVE ---
+        $cleanClientName = preg_replace('/[^A-Za-z0-9\-]/', '', str_replace(' ', '-', $validated['client_name']));
+        $zipFileName = "document_{$serviceType}_{$cleanClientName}_" . date('Y-m-d') . ".zip";
+        $zipPath = storage_path("app/generated/{$zipFileName}");
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
+            Log::error("Cannot open zip file at path: {$zipPath}");
+            return response()->json(['error' => 'Could not create the document archive.'], 500);
+        }
+
+        $zip->addFile($proposalOutputPath, $proposalOutputFilename);
+        $zip->addFile($contractOutputPath, $contractOutputFilename);
+        $zip->close();
+
+        // --- CLEAN UP INDIVIDUAL DOCX FILES ---
+        if (file_exists($proposalOutputPath)) {
+            unlink($proposalOutputPath);
+        }
+        if (file_exists($contractOutputPath)) {
+            unlink($contractOutputPath);
+        }
+
+        // --- DOWNLOAD ZIP AND DELETE IT AFTER SENDING ---
+        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
     }
 
     private function fillComparativeAttributes(TemplateProcessor $template, array $comparisonResults, string $serviceType, float $area)
@@ -99,7 +156,7 @@ class ProposalController extends Controller
         $chemicalDetails = [
             'Expose Soil Treatent per Liter Larutan' => [
                 'name' => 'Expose 55 SC',
-                'desc_1' => 'Bahan aktif Fipronil...',
+                'desc_1' => 'Bahan aktif Fipronil yang bersifat racun perut dan racun kontak.',
                 'desc_2' => 'Dosis 5-10 ml/L',
                 'desc_3' => 'Konsentrasi 5,5 %',
                 'image' => storage_path('app/templates/images/expose.png'),
@@ -108,7 +165,7 @@ class ProposalController extends Controller
             'Agenda Soil Treatent per Liter Larutan' => [
                 'name' => 'Agenda 25 EC',
                 'desc_1' => 'Bahan aktif Fipronil',
-                'desc_2' => 'Efektif membasmi rayap...',
+                'desc_2' => 'Efektif membasmi rayap hingga ke ratunya (Koloni Eliminasi)',
                 'desc_3' => 'Dosis 10 ml/L',
                 'image' => storage_path('app/templates/images/agenda.png'),
                 'treatment_name' => 'Pipanisasi & Spraying Chemical Agenda by Envu Indonesia',
@@ -123,39 +180,52 @@ class ProposalController extends Controller
             ],
         ];
 
-        $template->cloneBlock('chemical_block', count($comparisonResults), true, true);
-        $template->cloneBlock('price_block', count($comparisonResults), true, true);
+        $chemCount = count($comparisonResults);
 
+        try {
+            $template->cloneBlock('chemical_block', $chemCount, true, true);
+            Log::info("Cloned chemical_block successfully", ['count' => $chemCount]);
+        } catch (\Exception $e) {
+            Log::error("Failed to clone chemical_block: " . $e->getMessage());
+        }
+
+        try {
+            $template->cloneRowAndSetValues('price_block_counter', $this->preparePriceRowData($comparisonResults, $chemicalDetails, $serviceType, $area));
+            Log::info("Cloned price table rows successfully");
+        } catch (\Exception $e) {
+            Log::warning("cloneRowAndSetValues failed, trying cloneBlock: " . $e->getMessage());
+            try {
+                $template->cloneBlock('price_block', $chemCount, true, false);
+                $this->fillPriceBlockManually($template, $comparisonResults, $chemicalDetails, $serviceType, $area);
+            } catch (\Exception $e2) {
+                Log::error("Both cloning methods failed: " . $e2->getMessage());
+            }
+        }
+
+        // Fill chemical block values
         $i = 1;
         foreach ($comparisonResults as $chemicalKey => $priceData) {
             if (isset($chemicalDetails[$chemicalKey])) {
                 $details = $chemicalDetails[$chemicalKey];
-                $template->setValue("chem_name#{$i}", $details['name']);
-                $template->setValue("chem_desc_1#{$i}", $details['desc_1']);
-                $template->setValue("chem_desc_2#{$i}", $details['desc_2']);
-                $template->setValue("chem_desc_3#{$i}", $details['desc_3']);
-                if (file_exists($details['image'])) {
-                    $template->setImageValue("chem_image#{$i}", ['path' => $details['image'], 'width' => 150]);
-                }
 
-                $basePriceForChemical = $priceData['price'];
-                $adjustedPrices = $this->applyServicePriceAdjustments($serviceType, $basePriceForChemical, $area);
-                Log::info("Setting price values for #{$i}", [
-                    'counter' => $i,
-                    'treatment_name' => $details['treatment_name'],
-                    'final_price' => $adjustedPrices['final_price'],
-                    'psychological_price' => $adjustedPrices['psychological_price']
-                ]);
                 try {
-                    $template->setValue("price_block_counter#{$i}", $i);
-                    $template->setValue("price_treatment_name#{$i}", $details['treatment_name']);
-                    $template->setValue("price_final#{$i}", 'Rp ' . number_format($adjustedPrices['final_price'], 0, ',', '.'));
-                    $template->setValue("price_psychological#{$i}", 'Rp ' . number_format($adjustedPrices['psychological_price'], 0, ',', '.'));
-                    $template->setValue("price_guarantee#{$i}", '3 Tahun Garansi');
+                    $template->setValue("chem_name#{$i}", $details['name']);
+                    $template->setValue("chem_desc_1#{$i}", $details['desc_1']);
+                    $template->setValue("chem_desc_2#{$i}", $details['desc_2']);
+                    $template->setValue("chem_desc_3#{$i}", $details['desc_3']);
 
-                    Log::info("Successfully set all price_block values for #{$i}");
+                    if (file_exists($details['image'])) {
+                        $template->setImageValue("chem_image#{$i}", [
+                            'path' => $details['image'],
+                            'width' => 150,
+                            'height' => 150,
+                            'ratio' => false
+                        ]);
+                    }
+
+                    Log::info("Successfully filled chemical_block #{$i}");
                 } catch (\Exception $e) {
-                    Log::error("Failed to set price_block values for #{$i}: " . $e->getMessage());
+                    Log::error("Failed to fill chemical_block #{$i}: " . $e->getMessage());
                 }
 
                 $i++;
@@ -166,7 +236,7 @@ class ProposalController extends Controller
     private function fillSinglePriceAttributes(TemplateProcessor $template, float $basePrice, array $data)
     {
         $adjustedPrices = $this->applyServicePriceAdjustments($data['service_type'], $basePrice, $data['area_treatment']);
-
+        Log::info('harga', $adjustedPrices);
         $template->setValue('final_price', 'Rp ' . number_format($adjustedPrices['final_price'], 0, ',', '.'));
         $template->setValue('psychological_price', 'Rp ' . number_format($adjustedPrices['psychological_price'], 0, ',', '.'));
         $template->setValue('area_treatment', $data['area_treatment'] ?? 'N/A');
@@ -297,11 +367,11 @@ class ProposalController extends Controller
         return str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT) . "-SPH-PC-" . date('Y-m');
     }
 
-    private function generateOutputFilename($proposalType, $serviceType, $clientName)
+    private function generateOutputFilename($documentType, $serviceType, $clientName)
     {
         $cleanClientName = preg_replace('/[^A-Za-z0-9\-]/', '', str_replace(' ', '-', $clientName));
         $timestamp = date('Y-m-d_H-i-s');
-        return "proposal_{$proposalType}_{$serviceType}_{$cleanClientName}_{$timestamp}.docx";
+        return "{$documentType}_{$serviceType}_{$cleanClientName}_{$timestamp}.docx";
     }
 
     public function getAvailableServiceTypes($proposalType = 'pest_control')
@@ -344,6 +414,58 @@ class ProposalController extends Controller
             try {
                 $template->setValue($placeholder, '');
             } catch (\Exception $e) {
+                // Ignore errors for placeholders that may not exist in all templates
+            }
+        }
+    }
+
+    private function preparePriceRowData(array $comparisonResults, array $chemicalDetails, string $serviceType, float $area): array
+    {
+        $rowData = [];
+        $i = 1;
+
+        foreach ($comparisonResults as $chemicalKey => $priceData) {
+            if (isset($chemicalDetails[$chemicalKey])) {
+                $details = $chemicalDetails[$chemicalKey];
+                $basePriceForChemical = $priceData['price'];
+                $adjustedPrices = $this->applyServicePriceAdjustments($serviceType, $basePriceForChemical, $area);
+
+                $rowData[] = [
+                    'price_block_counter' => (string) $i,
+                     'price_treatment_name' => htmlspecialchars($details['treatment_name'], ENT_XML1),
+                    'price_psychological' => 'Rp ' . number_format($adjustedPrices['psychological_price'], 0, ',', '.'),
+                    'price_final' => 'Rp ' . number_format($adjustedPrices['final_price'], 0, ',', '.'),
+                    'price_guarantee' => '3 Tahun Garansi',
+                ];
+                $i++;
+            }
+        }
+
+        return $rowData;
+    }
+
+    private function fillPriceBlockManually(TemplateProcessor $template, array $comparisonResults, array $chemicalDetails, string $serviceType, float $area)
+    {
+        $i = 1;
+        foreach ($comparisonResults as $chemicalKey => $priceData) {
+            if (isset($chemicalDetails[$chemicalKey])) {
+                $details = $chemicalDetails[$chemicalKey];
+                $basePriceForChemical = $priceData['price'];
+                $adjustedPrices = $this->applyServicePriceAdjustments($serviceType, $basePriceForChemical, $area);
+                Log::info('ehe', $details);
+                try {
+                    $template->setValue("price_block_counter#{$i}", (string) $i);
+                    $template->setValue("price_treatment_name#{$i}", htmlspecialchars($details['treatment_name'], ENT_XML1));
+                    $template->setValue("price_final#{$i}", 'Rp ' . number_format($adjustedPrices['final_price'], 0, ',', '.'));
+                    $template->setValue("price_psychological#{$i}", 'Rp ' . number_format($adjustedPrices['psychological_price'], 0, ',', '.'));
+                    $template->setValue("price_guarantee#{$i}", '3 Tahun Garansi');
+
+                    Log::info("Successfully filled price_block #{$i}");
+                } catch (\Exception $e) {
+                    Log::error("Failed to fill price_block #{$i}: " . $e->getMessage());
+                }
+
+                $i++;
             }
         }
     }

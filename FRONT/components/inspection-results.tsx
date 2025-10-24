@@ -7,7 +7,7 @@ import { Camera, ChevronLeft, ChevronRight, ZoomIn, Download, Share2, Printer, L
 import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { UnifiedResultData } from "./flow-controller"; 
+import { UnifiedResultData } from "./flow-controller";
 
 interface ProposalFile {
   blob: Blob;
@@ -98,13 +98,13 @@ Terima kasih telah mempercayakan layanan pengendalian hama kepada kami.`;
     if (!results || !client || !accessToken) {
       throw new Error("Data tidak lengkap atau sesi tidak valid.");
     }
-    
+
     const specificTreatmentForTemplate = inspection.treatment.toLowerCase().replace(/ /g, '_');
-    
+
     const apiPayload = {
       service_type: specificTreatmentForTemplate,
-      general_service_type: serviceType, 
-      
+      general_service_type: serviceType,
+
       client_name: client.name,
       address: details.lokasiRumah || "N/A",
       area_treatment: details.luasTanah || 100,
@@ -126,7 +126,8 @@ Terima kasih telah mempercayakan layanan pengendalian hama kepada kami.`;
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          // 'Accept': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Accept': 'application/zip',
         },
         body: JSON.stringify(apiPayload),
       });
@@ -137,7 +138,19 @@ Terima kasih telah mempercayakan layanan pengendalian hama kepada kami.`;
       }
 
       const blob = await response.blob();
-      const filename = `Proposal_${apiPayload.client_name.replace(/ /g, '_')}_${serviceType}.docx`;
+      // const filename = `Proposal_${apiPayload.client_name.replace(/ /g, '_')}_${serviceType}.docx`;
+      // return { blob, filename };
+
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = `Dokumen_${apiPayload.client_name.replace(/ /g, '_')}.zip`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch && filenameMatch.length === 2) {
+          filename = filenameMatch[1];
+        }
+      }
+
       return { blob, filename };
     } catch (error) {
       console.error('Fetch error:', error);
@@ -238,7 +251,7 @@ Terima kasih telah mempercayakan layanan pengendalian hama kepada kami.`;
     switch (status) {
       case "Terdeteksi Rayap":
       case "Terdeteksi Hama":
-         return "bg-red-500/80";
+        return "bg-red-500/80";
       case "Butuh Pencegahan": return "bg-yellow-500/80";
       case "Aman": return "bg-green-500/80";
       default: return "bg-gray-500/80";
@@ -390,7 +403,7 @@ Terima kasih telah mempercayakan layanan pengendalian hama kepada kami.`;
           <p className="text-white/70">Data inspeksi tidak menyertakan foto apa pun.</p>
         </div>
       )}
-      
+
       <div className="mt-6 bg-amber-900/20 p-4 rounded-md border border-amber-800/30">
         <h3 className="font-bold text-amber-400 headline mb-2">Kesimpulan & Rekomendasi</h3>
         <p className="text-white/90 whitespace-pre-line mb-4">{inspection.summary}</p>
