@@ -74,6 +74,10 @@ export default function FlowController() {
     setIsSaving(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+      const payload = {
+        ...finalResults,
+        serviceType: finalResults.serviceTypes.join('_')
+      };
       const response = await fetch(`${apiUrl}/inspections`, {
         method: 'POST',
         headers: {
@@ -81,7 +85,7 @@ export default function FlowController() {
           'Authorization': `Bearer ${session.accessToken}`,
           'Accept': 'application/json',
         },
-        body: JSON.stringify(finalResults),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
